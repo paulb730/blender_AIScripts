@@ -1,0 +1,24 @@
+# Plantilla básica para Python
+*.py[cod]
+*$py.class
+__pycache__/
+.pytest_cache/
+.htmlcov/
+flake8
+.mypy_cache/
+.tox/
+.coverage
+*.db
+*.log
+
+# Entorno virtual local (venv)
+venv/
+.venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+
+# Configuraciones de IDEs comunes
+.vscode/
+.idea/
