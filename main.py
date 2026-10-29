@@ -51,10 +51,57 @@ def particle_setup():
      hair_particles.set_force_field("TURBULENCE", (0, 0, 1.20), 25)
 
 
-def setup_materials():
-    hair_material=material.Material("Hair_Material")
-    hair_material.set_hair_nodes("MULTIPLY", 25, (1.0, 0.0, 0.0, 1.0))
-    
+# ---------------------------------------------------------------------------
+# Parametros de los materiales (nada hardcodeado dentro de las funciones)
+# ---------------------------------------------------------------------------
+MATERIALS_CONFIG = {
+    "hair": {
+        "name": "Hair_Material",
+        "node_spacing": material.Material.DEFAULT_NODE_SPACING,
+        "math_operation": "MULTIPLY",
+        "emission_strength": 25,
+        "emission_color": (1.0, 0.0, 0.0, 1.0),
+        "ramp_interpolation": material.Material.DEFAULT_RAMP_INTERP,
+        "ramp_position": material.Material.DEFAULT_RAMP_POS,
+    },
+}
+
+
+def build_hair_material(cfg: dict) -> material.Material:
+    """Instancia un Material de pelo a partir de un diccionario de config."""
+    hair_material = material.Material(
+        cfg["name"],
+        node_spacing=cfg["node_spacing"],
+    )
+    hair_material.set_hair_nodes(
+        cfg["math_operation"],
+        cfg["emission_strength"],
+        cfg["emission_color"],
+        ramp_interpolation=cfg["ramp_interpolation"],
+        ramp_position=cfg["ramp_position"],
+    )
+    return hair_material
+
+
+def setup_materials(config: dict | None = None):
+    """Crea todos los materiales definidos en la configuracion dada.
+
+    Si no se pasa ninguna configuracion se usa MATERIALS_CONFIG, de modo que
+    agregar un material nuevo solo requiere anadir una entrada al diccionario.
+    """
+    config = config if config is not None else MATERIALS_CONFIG
+
+    builders = {"hair": build_hair_material}
+
+    materials = {}
+    for key, cfg in config.items():
+        builder = builders.get(key)
+        if builder is None:
+            raise KeyError(f"No existe builder para el material '{key}'")
+        materials[key] = builder(cfg)
+
+    return materials
+
 
 def main():
     helpers.clean_scene()
