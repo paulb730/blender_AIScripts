@@ -157,7 +157,8 @@ class Tornado:
 
         # Referencias que se llenan al construir
         self.emitter_obj = None       # objeto emisor (aro convertido a malla)
-        self.partsys = None           # ParticleSettings (data-block)
+        self.emitter_partsys = None   # Particle("EMITTER"): dinamica del vortice
+        self.partsys = None           # Particle("HAIR"): hebras visibles
         self.modifier = None          # ParticleSystemModifier del emisor
         self.material = None          # instancia materials.Material
         self.force_fields = []        # objetos effector creados
@@ -264,11 +265,54 @@ class Tornado:
 
     # --- Sistema de particulas ------------------------------------------
     def _build_particles(self):
-        """Configura el sistema HAIR reutilizando ``particles.Particle``."""
+        """Configura el sistema de particulas reutilizando ``particles.Particle``.
+
+        El objeto aro es un EMISOR de tipo "EMITTER": la clase ``Particle``
+        valida el tipo y configura la emision dinamica (ventana de frames,
+        vida util, distribucion). Las hebras visuales del embudo se
+        construyen encima con un segundo sistema "HAIR" (el pelo no puede
+        emitirse desde un sistema EMITTER; Blender exige un unico tipo por
+        sistema), por lo que el tornado queda 100% hecho por particulas.
+        """
         bpy.ops.object.select_all(action="DESELECT")
         self.emitter_obj.select_set(True)
         bpy.context.view_layer.objects.active = self.emitter_obj
 
+        # --- Capa EMITTER: dinamica base del vortice ----------------------
+        # Particulas con fisica newtoniana emitidas durante la ventana
+        # emission_start..emission_end; son las que los campos VORTEX/WIND
+        # arrastran en espiral ascendente.
+        self.emitter_partsys = particles.Particle(
+            "EMITTER",
+            self.particle_count,
+            name=f"{self.name}_EmitterParticles",
+            frame_start=self.emission_start,
+            frame_end=self.emission_end,
+            lifetime=self.particle_lifetime,
+            physics_type="NEWTONIAN",
+            life_random=min(0.3, (self.seed % 1.0) * 0.3),
+        )
+        # Bifurcacion EMITTER de is_particle: aplica ventana de emision,
+        # vida util, distribucion y dinamica pasando los kwargs propios
+        # del emisor (velocidad normal al aro proporcional a
+        # upward_speed + variacion aleatoria para romper la simetria).
+        self.emitter_partsys.is_particle(
+            emit_from="FACE",
+            normal_factor=1.0 + self.upward_speed * 10.0,
+            factor_random=0.15,
+            brownian_factor=0.02 + (self.seed % 5) * 0.01,
+            effect_factor=1.0,
+            mass=0.02,
+            size=max(self.bottom_radius * 0.02, 0.01),
+        )
+        eps = self.emitter_partsys.partsys
+        eps.use_advanced_hair = True
+        eps.time_offset = int(self.seed) % 1000
+        # Las particulas EMITTER no se renderizan como puntos: aportan la
+        # dinamica; el aspecto visual lo dan las hebras HAIR de abajo.
+        eps.use_render_emitter = False
+
+        # --- Capa HAIR: hebras visibles del embudo ------------------------
         self.partsys = particles.Particle("HAIR", self.particle_count)
         ps = self.partsys.partsys
         ps.name = f"{self.name}_ParticleSettings"
@@ -420,6 +464,7 @@ class Tornado:
             "upward_speed": self.upward_speed,
             "seed": self.seed,
             "location": self.location,
+            "particle_types": ["EMITTER", "HAIR"],
         }
 
     def remove(self, purge: bool = False):
@@ -435,9 +480,14 @@ class Tornado:
         if purge:
             if self.material and self.material.material in bpy.data.materials:
                 bpy.data.materials.remove(self.material.material)
-            if self.partsys and self.partsys.partsys in bpy.data.particles:
-                bpy.data.particles.remove(self.partsys.partsys)
+            for partsys in (self.partsys, self.emitter_partsys):
+                if partsys and partsys.partsys in bpy.data.particles:
+                    bpy.data.particles.remove(partsys.partsys)
         self.emitter_obj = None
+        self.emitter_partsys = None
+        self.partsys = None
+        self.modifier = None
+        self.material = None
         self.force_fields = []
 
     def __repr__(self) -> str:
